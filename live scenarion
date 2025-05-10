@@ -1,0 +1,111 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from IPython.display import HTML
+import random
+
+# Grid size and agent counts
+GRID_SIZE = 20
+NUM_UAVS = 10
+NUM_LEOPARDS = 3
+NUM_POACHERS = 2
+
+# Initialize positions
+np.random.seed(42)
+uavs = [np.array([random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)]) for _ in range(NUM_UAVS)]
+leopards = [np.array([random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)]) for _ in range(NUM_LEOPARDS)]
+poachers = [np.array([random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)]) for _ in range(NUM_POACHERS)]
+
+# UAV state tracking
+uav_states = ["search"] * NUM_UAVS
+uav_targets = [None] * NUM_UAVS
+
+# Helper functions
+def manhattan(p1, p2):
+    return np.abs(p1[0]-p2[0]) + np.abs(p1[1]-p2[1])
+
+def move_towards(agent, target):
+    dx, dy = target - agent
+    if abs(dx) > abs(dy):
+        agent[0] += np.sign(dx)
+    elif abs(dy) > 0:
+        agent[1] += np.sign(dy)
+    return np.clip(agent, 0, GRID_SIZE - 1)
+
+# Update functions
+def update_leopards():
+    for leopard in leopards:
+        move = np.random.randint(-1, 2, 2)
+        leopard += move
+        leopard[:] = np.clip(leopard, 0, GRID_SIZE - 1)
+
+def update_poachers():
+    for poacher in poachers:
+        distances = [manhattan(poacher, l) for l in leopards]
+        closest_idx = np.argmin(distances)
+        poacher[:] = move_towards(poacher, leopards[closest_idx])
+
+def update_uavs():
+    for i, uav in enumerate(uavs):
+        if uav_states[i] == "search":
+            for j, leopard in enumerate(leopards):
+                if manhattan(uav, leopard) <= 2:
+                    uav_states[i] = "diagnose"
+                    uav_targets[i] = j
+                    break
+            if uav_states[i] == "search":
+                uav += np.random.randint(-1, 2, 2)
+                uav[:] = np.clip(uav, 0, GRID_SIZE - 1)
+        elif uav_states[i] == "diagnose":
+            target_idx = uav_targets[i]
+            if target_idx is not None:
+                leopard_pos = leopards[target_idx]
+                if manhattan(uav, leopard_pos) <= 1:
+                    uav_states[i] = "monitor"
+                else:
+                    uav[:] = move_towards(uav, leopard_pos)
+        elif uav_states[i] == "monitor":
+            target_idx = uav_targets[i]
+            if target_idx is not None:
+                leopard_pos = leopards[target_idx]
+                if manhattan(uav, leopard_pos) > 2:
+                    uav_states[i] = "diagnose"
+                else:
+                    if random.random() < 0.3:
+                        uav += np.random.randint(-1, 2, 2)
+                        uav[:] = np.clip(uav, 0, GRID_SIZE - 1)
+
+# Plotting setup
+fig, ax = plt.subplots(figsize=(6, 6))
+scat_uav = ax.scatter([], [], c='blue', marker='s', s=100, label='UAV')
+scat_leopard = ax.scatter([], [], c='orange', marker='o', s=150, label='Leopard')
+scat_poacher = ax.scatter([], [], c='red', marker='X', s=150, label='Poacher')
+
+def init():
+    ax.set_xlim(-1, GRID_SIZE)
+    ax.set_ylim(-1, GRID_SIZE)
+    ax.set_title("UAVs Patrolling Leopards and Poachers")
+    ax.legend(loc='upper right')
+    return scat_uav, scat_leopard, scat_poacher
+
+def animate(frame):
+    update_leopards()
+    update_poachers()
+    update_uavs()
+
+    uav_coords = np.array(uavs)
+    leopard_coords = np.array(leopards)
+    poacher_coords = np.array(poachers)
+
+    colors = ['blue' if state == 'search' else 'purple' if state == 'diagnose' else 'green' for state in uav_states]
+    scat_uav.set_offsets(uav_coords)
+    scat_uav.set_color(colors)
+    scat_leopard.set_offsets(leopard_coords)
+    scat_poacher.set_offsets(poacher_coords)
+    return scat_uav, scat_leopard, scat_poacher
+
+# Create animation
+anim = animation.FuncAnimation(fig, animate, init_func=init, frames=100, interval=300, blit=True)
+
+# Display in Jupyter Notebook
+HTML(anim.to_jshtml())
